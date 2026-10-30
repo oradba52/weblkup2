@@ -13,7 +13,7 @@ import os
 
 from app.config import settings
 from app.database import SessionLocal, engine, Base
-from app.routers import auth
+from app.routers import auth, admin_catalog
 from app.routers.auth import get_current_user
 
 app = FastAPI(title=settings.app_name)
@@ -31,8 +31,9 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
-# Подключаем роутер авторизации
+# Подключаем роутеры
 app.include_router(auth.router)
+app.include_router(admin_catalog.router)
 
 
 def get_db():
@@ -82,16 +83,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "current_user": user,
             "active_page": "dashboard",
         },
-    )
-
-
-@app.get("/admin/catalog")
-async def catalog_stub(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    return templates.TemplateResponse(
-        "stub.html",
-        {"request": request, "current_user": user, "active_page": "catalog",
-         "title": "Каталог", "message": "Каталог будет реализован в следующем этапе."},
     )
 
 
