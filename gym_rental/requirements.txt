@@ -1,0 +1,29 @@
+# --- Web framework ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+gunicorn==23.0.0
+python-multipart==0.0.17
+
+# --- Templating ---
+jinja2==3.1.4
+
+# --- ORM + migrations ---
+sqlalchemy[asyncio]==2.0.36
+alembic==1.14.0
+
+# --- Auth ---
+bcrypt==4.2.1
+itsdangerous==2.2.0
+
+# --- Settings ---
+pydantic-settings==2.7.0
+pydantic==2.10.3
+
+# --- Reports ---
+openpyxl==3.1.5
+reportlab==4.2.5
+
+# --- Lint / dev ---
+ruff==0.8.4
+pytest==8.3.4
+httpx==0.28.1
