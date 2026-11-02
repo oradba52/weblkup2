@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — Заказчики{% endblock %}
+{% block page_header %}Заказчики{% endblock %}
+
+{% block content %}
+<div class="row mb-2">
+  <div class="col-sm-6">
+    <p class="text-muted">Всего: {{ total }} заказчиков</p>
+  </div>
+  <div class="col-sm-6 text-right">
+    <a href="/admin/persons/new" class="btn btn-info btn-sm">
+      <i class="fas fa-plus"></i> Добавить заказчика
+    </a>
+  </div>
+</div>
+
+<div class="card card-outline card-info">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-filter"></i> Поиск</h3>
+  </div>
+  <div class="card-body">
+    <form method="get" action="/admin/persons" class="form-inline">
+      <div class="form-group mr-2 mb-2">
+        <input type="text" name="search" class="form-control" placeholder="Имя, фамилия или телефон"
+               value="{{ search or '' }}">
+      </div>
+      <button type="submit" class="btn btn-primary mb-2"><i class="fas fa-search"></i> Найти</button>
+      <a href="/admin/persons" class="btn btn-default mb-2 ml-1">Сбросить</a>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body table-responsive p-0">
+    <table class="table table-hover text-nowrap">
+      <thead>
+        <tr>
+          <th style="width: 50px;">ID</th>
+          <th>Фамилия</th>
+          <th>Имя</th>
+          <th>Отчество</th>
+          <th>Телефон</th>
+          <th>Telegram</th>
+          <th class="text-center">Броней</th>
+          <th class="text-center">Покупок</th>
+          <th class="text-right" style="width: 120px;">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in persons_data %}
+        <tr>
+          <td>{{ row.person.id }}</td>
+          <td>{{ row.person.last_name }}</td>
+          <td>{{ row.person.first_name }}</td>
+          <td>{{ row.person.second_name or '—' }}</td>
+          <td>{{ row.person.phone }}</td>
+          <td>{{ row.person.telegram_id or '—' }}</td>
+          <td class="text-center">
+            {% if row.booking_count %}
+            <span class="badge badge-warning">{{ row.booking_count }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% if row.sale_count %}
+            <span class="badge badge-success">{{ row.sale_count }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-right">
+            <a href="/admin/persons/{{ row.person.id }}/edit" class="btn btn-warning btn-sm" title="Редактировать">
+              <i class="fas fa-edit"></i>
+            </a>
+            <form method="post" action="/admin/persons/{{ row.person.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Удалить заказчика «{{ row.full_name }}»?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-danger btn-sm" title="Удалить">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">
+          <i class="fas fa-users" style="font-size: 48px; opacity: 0.3;"></i>
+          <p class="mt-2 mb-0">Заказчиков пока нет. Нажмите «Добавить заказчика».</p>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer clearfix">
+    <ul class="pagination pagination-sm m-0 float-right">
+      {% if page > 1 %}
+      <li class="page-item">
+        <a class="page-link" href="/admin/persons?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}">&laquo;</a>
+      </li>
+      {% endif %}
+      {% for p in range(1, total_pages + 1) %}
+      <li class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link" href="/admin/persons?page={{ p }}{% if search %}&search={{ search }}{% endif %}">{{ p }}</a>
+      </li>
+      {% endfor %}
+      {% if page < total_pages %}
+      <li class="page-item">
+        <a class="page-link" href="/admin/persons?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}">&raquo;</a>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -13,7 +13,7 @@ import os
 
 from app.config import settings
 from app.database import SessionLocal, engine, Base
-from app.routers import auth, admin_catalog
+from app.routers import auth, admin_catalog, admin_persons, admin_bookings, admin_sales
 from app.routers.auth import get_current_user
 
 app = FastAPI(title=settings.app_name)
@@ -34,6 +34,9 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 # Подключаем роутеры
 app.include_router(auth.router)
 app.include_router(admin_catalog.router)
+app.include_router(admin_persons.router)
+app.include_router(admin_bookings.router)
+app.include_router(admin_sales.router)
 
 
 def get_db():
@@ -78,6 +81,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     from app.models.catalog import Catalog
     from app.models.booking import Booking
     from app.models.sale import Sale
+    from app.models.person import Person
     from datetime import date
 
     user = get_current_user(request, db)
@@ -87,6 +91,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     total_sale = db.query(Catalog).filter(Catalog.type == "sale").count()
     sold_count = db.query(Catalog).filter(Catalog.is_sold == True).count()
     free_count = total_catalog - sold_count
+    total_persons = db.query(Person).count()
 
     today = date.today()
     active_bookings = (
@@ -122,40 +127,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "total_sale": total_sale,
             "sold_count": sold_count,
             "free_count": free_count,
+            "total_persons": total_persons,
             "active_bookings": active_bookings,
             "sales_this_month": sales_this_month,
             "revenue_this_month": revenue_total,
         },
-    )
-
-
-@app.get("/admin/persons")
-async def persons_stub(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    return templates.TemplateResponse(
-        "stub.html",
-        {"request": request, "current_user": user, "active_page": "persons",
-         "title": "Заказчики", "message": "Заказчики будут реализованы в следующем этапе."},
-    )
-
-
-@app.get("/admin/bookings")
-async def bookings_stub(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    return templates.TemplateResponse(
-        "stub.html",
-        {"request": request, "current_user": user, "active_page": "bookings",
-         "title": "Бронирования", "message": "Бронирования будут реализованы в следующем этапе."},
-    )
-
-
-@app.get("/admin/sales")
-async def sales_stub(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    return templates.TemplateResponse(
-        "stub.html",
-        {"request": request, "current_user": user, "active_page": "sales",
-         "title": "Продажи", "message": "Продажи будут реализованы в следующем этапе."},
     )
 
 

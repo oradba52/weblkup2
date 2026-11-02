@@ -20,10 +20,13 @@
   <div class="col-lg-3 col-6">
     <div class="small-box bg-success">
       <div class="inner">
-        <h3>{{ free_count }}</h3>
-        <p>Свободно</p>
+        <h3>{{ total_persons }}</h3>
+        <p>Заказчиков</p>
       </div>
-      <div class="icon"><i class="fas fa-check-circle"></i></div>
+      <div class="icon"><i class="fas fa-users"></i></div>
+      <a href="/admin/persons" class="small-box-footer">
+        Открыть заказчиков <i class="fas fa-arrow-circle-right"></i>
+      </a>
     </div>
   </div>
   <div class="col-lg-3 col-6">
@@ -33,6 +36,9 @@
         <p>Активных броней</p>
       </div>
       <div class="icon"><i class="fas fa-calendar-check"></i></div>
+      <a href="/admin/bookings" class="small-box-footer">
+        Открыть бронирования <i class="fas fa-arrow-circle-right"></i>
+      </a>
     </div>
   </div>
   <div class="col-lg-3 col-6">
@@ -85,12 +91,11 @@
       </div>
       <div class="card-body">
         <p>GymRental — система учёта проката и продажи купальников.</p>
-        <div class="alert alert-info mb-0">
-          <i class="fas fa-check-circle"></i> <strong>Этап 2:</strong> каталог, загрузка
-          фотографий, CRUD-операции со статусами (свободен / забронирован / продан).
+        <div class="alert alert-success mb-0">
+          <i class="fas fa-check-circle"></i> <strong>Этап 3:</strong> заказчики, бронирования
+          с контролем занятости, продажи с автоматической отметкой товара.
         </div>
-        <p class="text-muted mt-2 mb-0">Разделы «Заказчики», «Бронирования», «Продажи»
-          и «Отчёты» будут реализованы в следующем этапе.</p>
+        <p class="text-muted mt-2 mb-0">Раздел «Отчёты» будет реализован в следующем этапе.</p>
       </div>
     </div>
   </div>

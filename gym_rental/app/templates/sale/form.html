@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — {{ 'Редактирование продажи' if sale else 'Новая продажа' }}{% endblock %}
+{% block page_header %}
+{{ 'Редактирование продажи #' ~ sale.id if sale else 'Новая продажа' }}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <div class="card card-outline card-info">
+      <div class="card-header">
+        <h3 class="card-title">
+          <i class="fas {{ 'fa-edit' if sale else 'fa-shopping-cart' }}"></i>
+          {{ 'Редактирование' if sale else 'Создание' }}
+        </h3>
+        <div class="card-tools">
+          <a href="/admin/sales" class="btn btn-default btn-sm">
+            <i class="fas fa-arrow-left"></i> Назад к списку
+          </a>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if errors %}
+        <div class="alert alert-danger">
+          <ul class="mb-0">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <form method="post"
+              action="{{ '/admin/sales/' ~ sale.id ~ '/edit' if sale else '/admin/sales/new' }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+          <div class="form-group">
+            <label>Товар *</label>
+            {% if sale %}
+            <input type="text" class="form-control" disabled
+                   value="{{ sale.catalog.name ~ ' (разм. ' ~ sale.catalog.size ~ ')' if sale.catalog else 'товар удалён' }}">
+            {% else %}
+            <select name="catalog_id" class="form-control" required>
+              <option value="">— Выберите товар —</option>
+              {% for item in catalog_items %}
+              <option value="{{ item.id }}" {% if selected_catalog_id == item.id %}selected{% endif %}>
+                {{ item.name }} (разм. {{ item.size }}, {{ "%.0f"|format(item.price) }} руб.)
+              </option>
+              {% endfor %}
+            </select>
+            <small class="form-text text-muted">Доступны только товары типа «Продажа», которые ещё не проданы.</small>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label>Заказчик *</label>
+            <select name="person_id" class="form-control" required>
+              <option value="">— Выберите заказчика —</option>
+              {% for p in persons %}
+              <option value="{{ p.id }}" {% if sale and sale.person_id == p.id %}selected{% endif %}>
+                {{ p.last_name }} {{ p.first_name }}{% if p.second_name %} {{ p.second_name }}{% endif %} — {{ p.phone }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Цена (руб.) *</label>
+                <input type="number" name="price" class="form-control" required min="0.01" step="0.01"
+                       value="{{ '%.2f'|format(sale.price) if sale else '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Дата продажи *</label>
+                <input type="date" name="sale_date" class="form-control" required
+                       value="{{ sale.sale_date if sale else '' }}">
+              </div>
+            </div>
+          </div>
+
+          {% if not sale %}
+          <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            При сохранении товар будет помечен как проданный и исчезнет из доступных для бронирования.
+          </div>
+          {% endif %}
+
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Сохранить</button>
+            <a href="/admin/sales" class="btn btn-default">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

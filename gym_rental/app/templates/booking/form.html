@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — {{ 'Редактирование брони' if booking else 'Новое бронирование' }}{% endblock %}
+{% block page_header %}
+{{ 'Редактирование брони #' ~ booking.id if booking else 'Новое бронирование' }}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <div class="card card-outline card-info">
+      <div class="card-header">
+        <h3 class="card-title">
+          <i class="fas {{ 'fa-edit' if booking else 'fa-calendar-plus' }}"></i>
+          {{ 'Редактирование' if booking else 'Создание' }}
+        </h3>
+        <div class="card-tools">
+          <a href="/admin/bookings" class="btn btn-default btn-sm">
+            <i class="fas fa-arrow-left"></i> Назад к списку
+          </a>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if errors %}
+        <div class="alert alert-danger">
+          <ul class="mb-0">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <form method="post"
+              action="{{ '/admin/bookings/' ~ booking.id ~ '/edit' if booking else '/admin/bookings/new' }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+          <div class="form-group">
+            <label>Товар *</label>
+            {% if booking %}
+            {# При редактировании товар нельзя менять #}
+            <input type="text" class="form-control" disabled
+                   value="{{ booking.catalog.name ~ ' (разм. ' ~ booking.catalog.size ~ ', ' ~ ('%.0f'|format(booking.catalog.price)) ~ ' руб.)' if booking.catalog else 'товар удалён' }}">
+            {% else %}
+            <select name="catalog_id" class="form-control" required>
+              <option value="">— Выберите товар —</option>
+              {% for item in catalog_items %}
+              <option value="{{ item.id }}" {% if selected_catalog_id == item.id %}selected{% endif %}>
+                {{ item.name }} (разм. {{ item.size }}, {{ "%.0f"|format(item.price) }} руб.)
+              </option>
+              {% endfor %}
+            </select>
+            <small class="form-text text-muted">Цена брони рассчитывается автоматически: цена товара × дней.</small>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label>Заказчик *</label>
+            <select name="person_id" class="form-control" required>
+              <option value="">— Выберите заказчика —</option>
+              {% for p in persons %}
+              <option value="{{ p.id }}" {% if booking and booking.person_id == p.id %}selected{% endif %}>
+                {{ p.last_name }} {{ p.first_name }}{% if p.second_name %} {{ p.second_name }}{% endif %} — {{ p.phone }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Дата начала *</label>
+                <input type="date" name="data_start" class="form-control" required
+                       value="{{ booking.data_start if booking else '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Дата окончания *</label>
+                <input type="date" name="data_finish" class="form-control" required
+                       value="{{ booking.data_finish if booking else '' }}">
+              </div>
+            </div>
+          </div>
+
+          {% if booking %}
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Статус *</label>
+                <select name="status" class="form-control" required>
+                  {% for key, (label, badge) in status_labels.items() %}
+                  <option value="{{ key }}" {% if booking.status == key %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Фактическая дата возврата</label>
+                <input type="date" name="fact_finish" class="form-control"
+                       value="{{ booking.fact_finish if booking.fact_finish else '' }}">
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <div class="alert alert-info mb-0">
+              <i class="fas fa-info-circle"></i>
+              Стоимость: <strong>{{ "%.0f"|format(booking.total_price) }} руб.</strong>
+              (рассчитывается автоматически при сохранении)
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Сохранить</button>
+            <a href="/admin/bookings" class="btn btn-default">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

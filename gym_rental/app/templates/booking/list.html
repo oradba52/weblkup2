@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — Бронирования{% endblock %}
+{% block page_header %}Бронирования{% endblock %}
+
+{% block content %}
+<div class="row mb-2">
+  <div class="col-sm-6">
+    <p class="text-muted">Всего: {{ total }} бронирований</p>
+  </div>
+  <div class="col-sm-6 text-right">
+    <a href="/admin/bookings/new" class="btn btn-info btn-sm">
+      <i class="fas fa-plus"></i> Новое бронирование
+    </a>
+  </div>
+</div>
+
+<!-- Фильтр по статусу -->
+<div class="card card-outline card-info">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-filter"></i> Фильтр</h3>
+  </div>
+  <div class="card-body">
+    <form method="get" action="/admin/bookings" class="form-inline">
+      <div class="form-group mr-2 mb-2">
+        <select name="status" class="form-control">
+          <option value="">— Все статусы —</option>
+          {% for key, (label, badge) in status_labels.items() %}
+          <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary mb-2"><i class="fas fa-search"></i> Применить</button>
+      <a href="/admin/bookings" class="btn btn-default mb-2 ml-1">Сбросить</a>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body table-responsive p-0">
+    <table class="table table-hover text-nowrap">
+      <thead>
+        <tr>
+          <th style="width: 50px;">ID</th>
+          <th>Товар</th>
+          <th>Заказчик</th>
+          <th>Начало</th>
+          <th>Конец</th>
+          <th>Факт. возврат</th>
+          <th>Стоимость</th>
+          <th>Статус</th>
+          <th class="text-right" style="width: 120px;">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr>
+          <td>{{ b.id }}</td>
+          <td>
+            {% if b.catalog %}
+            {{ b.catalog.name }} <span class="text-muted">(разм. {{ b.catalog.size }})</span>
+            {% else %}
+            <span class="text-danger">товар удалён</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if b.person %}
+            {{ b.person.last_name }} {{ b.person.first_name }}
+            {% else %}
+            <span class="text-danger">заказчик удалён</span>
+            {% endif %}
+          </td>
+          <td>{{ b.data_start }}</td>
+          <td>{{ b.data_finish }}</td>
+          <td>{{ b.fact_finish or '—' }}</td>
+          <td>{{ "%.0f"|format(b.total_price) }} руб.</td>
+          <td>
+            {% set label_badge = status_labels.get(b.status) %}
+            {% if label_badge %}
+            <span class="badge badge-{{ label_badge[1] }}">{{ label_badge[0] }}</span>
+            {% else %}
+            <span class="badge badge-secondary">{{ b.status }}</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <a href="/admin/bookings/{{ b.id }}/edit" class="btn btn-warning btn-sm" title="Редактировать">
+              <i class="fas fa-edit"></i>
+            </a>
+            <form method="post" action="/admin/bookings/{{ b.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Удалить бронирование #{{ b.id }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-danger btn-sm" title="Удалить">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">
+          <i class="fas fa-calendar-check" style="font-size: 48px; opacity: 0.3;"></i>
+          <p class="mt-2 mb-0">Бронирований пока нет. Нажмите «Новое бронирование».</p>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer clearfix">
+    <ul class="pagination pagination-sm m-0 float-right">
+      {% if page > 1 %}
+      <li class="page-item">
+        <a class="page-link" href="/admin/bookings?page={{ page - 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}">&laquo;</a>
+      </li>
+      {% endif %}
+      {% for p in range(1, total_pages + 1) %}
+      <li class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link" href="/admin/bookings?page={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ p }}</a>
+      </li>
+      {% endfor %}
+      {% if page < total_pages %}
+      <li class="page-item">
+        <a class="page-link" href="/admin/bookings?page={{ page + 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}">&raquo;</a>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
