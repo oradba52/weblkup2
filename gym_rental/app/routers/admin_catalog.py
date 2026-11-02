@@ -75,6 +75,8 @@ async def catalog_list(
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
 
+    csrf_token = generate_csrf_token(request)
+
     query = db.query(Catalog)
 
     # Фильтр по размеру
@@ -117,6 +119,7 @@ async def catalog_list(
             "request": request,
             "current_user": user,
             "active_page": "catalog",
+            "csrf_token": csrf_token,
             "items": items_with_status,
             "page": page,
             "total_pages": total_pages,

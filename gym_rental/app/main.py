@@ -74,14 +74,57 @@ async def root():
 
 @app.get("/admin")
 async def dashboard(request: Request, db: Session = Depends(get_db)):
-    """Дашборд — сводка (заглушка для этапа 1)."""
+    """Дашборд — сводка по каталогу, бронированиям и продажам."""
+    from app.models.catalog import Catalog
+    from app.models.booking import Booking
+    from app.models.sale import Sale
+    from datetime import date
+
     user = get_current_user(request, db)
+
+    total_catalog = db.query(Catalog).count()
+    total_rent = db.query(Catalog).filter(Catalog.type == "rent").count()
+    total_sale = db.query(Catalog).filter(Catalog.type == "sale").count()
+    sold_count = db.query(Catalog).filter(Catalog.is_sold == True).count()
+    free_count = total_catalog - sold_count
+
+    today = date.today()
+    active_bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status.in_(["active", "returned"]),
+            Booking.data_start <= today,
+            Booking.data_finish >= today,
+        )
+        .count()
+    )
+
+    # Продажи за текущий месяц
+    month_start = date(today.year, today.month, 1)
+    sales_this_month = (
+        db.query(Sale).filter(Sale.sale_date >= month_start).count()
+    )
+    revenue_this_month = (
+        db.query(Sale).filter(Sale.sale_date >= month_start)
+        .with_entities(Sale.price)
+        .all()
+    )
+    revenue_total = sum(s[0] for s in revenue_this_month) if revenue_this_month else 0.0
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "current_user": user,
             "active_page": "dashboard",
+            "total_catalog": total_catalog,
+            "total_rent": total_rent,
+            "total_sale": total_sale,
+            "sold_count": sold_count,
+            "free_count": free_count,
+            "active_bookings": active_bookings,
+            "sales_this_month": sales_this_month,
+            "revenue_this_month": revenue_total,
         },
     )
 
