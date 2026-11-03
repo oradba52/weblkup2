@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  # ── FastAPI приложение ──────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gym_rental_app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://gym:gym_password@db:5432/gym_rental
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      UPLOAD_DIR: app/uploads
+      MAX_UPLOAD_MB: "5"
+    volumes:
+      - app_uploads:/app/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gym_net
+
+  # ── PostgreSQL ─────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: gym_rental_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gym_rental
+      POSTGRES_USER: gym
+      POSTGRES_PASSWORD: gym_password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gym -d gym_rental"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gym_net
+
+  # ── Nginx reverse-proxy ────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: gym_rental_nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/gym_rental.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - gym_net
+
+volumes:
+  app_uploads:
+  db_data:
+
+networks:
+  gym_net:
+    driver: bridge

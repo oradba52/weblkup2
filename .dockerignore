@@ -1,0 +1,29 @@
+# Зависимости и артефакты
+node_modules/
+dist/
+.git/
+.gitignore
+*.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# База данных (локальная)
+gym_rental/gym_rental.db
+
+# Загруженные файлы (пробрасываются через volume)
+gym_rental/app/uploads/*
+!gym_rental/app/uploads/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Bolt
+.bolt/

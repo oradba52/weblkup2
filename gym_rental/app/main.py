@@ -117,6 +117,28 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     )
     revenue_total = sum(s[0] for s in revenue_this_month) if revenue_this_month else 0.0
 
+    # Просроченные брони
+    overdue_bookings = db.query(Booking).filter(
+        Booking.status == "active",
+        Booking.data_finish < today,
+    ).count()
+
+    # Последние 5 бронирований
+    recent_bookings = (
+        db.query(Booking)
+        .order_by(Booking.id.desc())
+        .limit(5)
+        .all()
+    )
+
+    # Последние 5 продаж
+    recent_sales = (
+        db.query(Sale)
+        .order_by(Sale.id.desc())
+        .limit(5)
+        .all()
+    )
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -130,8 +152,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "free_count": free_count,
             "total_persons": total_persons,
             "active_bookings": active_bookings,
+            "overdue_bookings": overdue_bookings,
             "sales_this_month": sales_this_month,
             "revenue_this_month": revenue_total,
+            "recent_bookings": recent_bookings,
+            "recent_sales": recent_sales,
         },
     )
 
