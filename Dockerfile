@@ -30,9 +30,8 @@ COPY gym_rental/ .
 # Создаём директории для загрузок и статики
 RUN mkdir -p app/uploads app/static
 
-# Переменные окружения по умолчанию
+# Переменные окружения по умолчанию (секреты передаются через docker-compose/.env)
 ENV DATABASE_URL=sqlite:///./gym_rental.db \
-    SECRET_KEY=change-me-in-production \
     UPLOAD_DIR=app/uploads \
     MAX_UPLOAD_MB=5 \
     PYTHONUNBUFFERED=1
