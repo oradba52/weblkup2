@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — {{ report_name }}{% endblock %}
+{% block page_header %}{{ report_name }}{% endblock %}
+
+{% block content %}
+<div class="card card-outline card-info">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-warehouse"></i> {{ report_name }}</h3>
+    <div class="card-tools">
+      <a href="/admin/reports/inventory?export=excel" class="btn btn-success btn-sm">
+        <i class="fas fa-file-excel"></i> Excel
+      </a>
+      <a href="/admin/reports/inventory?export=pdf" class="btn btn-danger btn-sm">
+        <i class="fas fa-file-pdf"></i> PDF
+      </a>
+      <a href="/admin/reports" class="btn btn-default btn-sm">
+        <i class="fas fa-arrow-left"></i> Назад
+      </a>
+    </div>
+  </div>
+  <div class="card-body table-responsive p-0">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Размер</th>
+          <th>Тип</th>
+          <th class="text-center">Всего</th>
+          <th class="text-center">Продано</th>
+          <th class="text-center">Свободно</th>
+          <th class="text-right">Суммарная цена, руб.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.size }}</td>
+          <td>
+            {% if r.type == 'Прокат' %}
+            <span class="badge badge-info">Прокат</span>
+            {% else %}
+            <span class="badge badge-primary">Продажа</span>
+            {% endif %}
+          </td>
+          <td class="text-center">{{ r.total }}</td>
+          <td class="text-center text-danger">{{ r.sold }}</td>
+          <td class="text-center text-success">{{ r.free }}</td>
+          <td class="text-right">{{ "%.0f"|format(r.total_price) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

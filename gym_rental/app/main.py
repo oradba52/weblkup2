@@ -13,7 +13,7 @@ import os
 
 from app.config import settings
 from app.database import SessionLocal, engine, Base
-from app.routers import auth, admin_catalog, admin_persons, admin_bookings, admin_sales
+from app.routers import auth, admin_catalog, admin_persons, admin_bookings, admin_sales, admin_reports
 from app.routers.auth import get_current_user
 
 app = FastAPI(title=settings.app_name)
@@ -37,6 +37,7 @@ app.include_router(admin_catalog.router)
 app.include_router(admin_persons.router)
 app.include_router(admin_bookings.router)
 app.include_router(admin_sales.router)
+app.include_router(admin_reports.router)
 
 
 def get_db():
@@ -132,16 +133,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "sales_this_month": sales_this_month,
             "revenue_this_month": revenue_total,
         },
-    )
-
-
-@app.get("/admin/reports")
-async def reports_stub(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    return templates.TemplateResponse(
-        "stub.html",
-        {"request": request, "current_user": user, "active_page": "reports",
-         "title": "Отчёты", "message": "Отчёты будут реализованы в следующем этапе."},
     )
 
 

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — Отчёты{% endblock %}
+{% block page_header %}Отчёты{% endblock %}
+
+{% block content %}
+<div class="row">
+  {% for slug, title, icon, desc in reports %}
+  <div class="col-lg-4 col-md-6 mb-3">
+    <a href="/admin/reports/{{ slug }}" class="text-decoration-none">
+      <div class="card card-outline card-info h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="mr-3">
+            <span class="badge badge-info badge-lg" style="font-size: 24px; padding: 16px;">
+              <i class="fas {{ icon }}"></i>
+            </span>
+          </div>
+          <div>
+            <h5 class="mb-1">{{ title }}</h5>
+            <p class="text-muted mb-0" style="font-size: 13px;">{{ desc }}</p>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

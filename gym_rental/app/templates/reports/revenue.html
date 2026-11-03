@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — {{ report_name }}{% endblock %}
+{% block page_header %}{{ report_name }}{% endblock %}
+
+{% block content %}
+<div class="card card-outline card-info">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-ruble-sign"></i> {{ report_name }}</h3>
+    <div class="card-tools">
+      <a href="/admin/reports/revenue?export=excel{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+         class="btn btn-success btn-sm"><i class="fas fa-file-excel"></i> Excel</a>
+      <a href="/admin/reports/revenue?export=pdf{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+         class="btn btn-danger btn-sm"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="/admin/reports" class="btn btn-default btn-sm"><i class="fas fa-arrow-left"></i> Назад</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="get" action="/admin/reports/revenue" class="form-inline mb-3">
+      <div class="form-group mr-2 mb-2">
+        <label class="mr-1">С:</label>
+        <input type="date" name="date_from" class="form-control" value="{{ date_from or '' }}">
+      </div>
+      <div class="form-group mr-2 mb-2">
+        <label class="mr-1">По:</label>
+        <input type="date" name="date_to" class="form-control" value="{{ date_to or '' }}">
+      </div>
+      <button type="submit" class="btn btn-primary mb-2"><i class="fas fa-filter"></i> Применить</button>
+    </form>
+
+    <div class="row mb-3">
+      <div class="col-md-4">
+        <div class="info-box bg-success">
+          <span class="info-box-icon"><i class="fas fa-shopping-cart"></i></span>
+          <div class="info-box-content">
+            <span class="info-box-text">Продажи</span>
+            <span class="info-box-number">{{ "%.0f"|format(sale_total) }} руб.</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="info-box bg-info">
+          <span class="info-box-icon"><i class="fas fa-calendar-check"></i></span>
+          <div class="info-box-content">
+            <span class="info-box-text">Прокат</span>
+            <span class="info-box-number">{{ "%.0f"|format(booking_total) }} руб.</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="info-box bg-warning">
+          <span class="info-box-icon"><i class="fas fa-coins"></i></span>
+          <div class="info-box-content">
+            <span class="info-box-text">Итого</span>
+            <span class="info-box-number">{{ "%.0f"|format(grand_total) }} руб.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Тип</th>
+          <th>Товар</th>
+          <th>Заказчик</th>
+          <th class="text-right">Сумма, руб.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.date }}</td>
+          <td>
+            {% if r.type == 'Продажа' %}
+            <span class="badge badge-success">Продажа</span>
+            {% else %}
+            <span class="badge badge-info">Прокат</span>
+            {% endif %}
+          </td>
+          <td>{{ r.item }}</td>
+          <td>{{ r.person }}</td>
+          <td class="text-right">{{ "%.0f"|format(r.amount) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Нет данных за выбранный период</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

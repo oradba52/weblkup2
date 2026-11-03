@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}GymRental — {{ report_name }}{% endblock %}
+{% block page_header %}{{ report_name }}{% endblock %}
+
+{% block content %}
+<div class="card card-outline card-info">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-trophy"></i> {{ report_name }}</h3>
+    <div class="card-tools">
+      <a href="/admin/reports/top-customers?export=excel{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+         class="btn btn-success btn-sm"><i class="fas fa-file-excel"></i> Excel</a>
+      <a href="/admin/reports/top-customers?export=pdf{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+         class="btn btn-danger btn-sm"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="/admin/reports" class="btn btn-default btn-sm"><i class="fas fa-arrow-left"></i> Назад</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="get" action="/admin/reports/top-customers" class="form-inline mb-3">
+      <div class="form-group mr-2 mb-2">
+        <label class="mr-1">С:</label>
+        <input type="date" name="date_from" class="form-control" value="{{ date_from or '' }}">
+      </div>
+      <div class="form-group mr-2 mb-2">
+        <label class="mr-1">По:</label>
+        <input type="date" name="date_to" class="form-control" value="{{ date_to or '' }}">
+      </div>
+      <button type="submit" class="btn btn-primary mb-2"><i class="fas fa-filter"></i> Применить</button>
+    </form>
+
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Заказчик</th>
+          <th>Телефон</th>
+          <th class="text-center">Покупок</th>
+          <th class="text-right">Сумма продаж</th>
+          <th class="text-center">Броней</th>
+          <th class="text-right">Сумма проката</th>
+          <th class="text-right">Итого, руб.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.phone }}</td>
+          <td class="text-center">{{ r.sale_count }}</td>
+          <td class="text-right">{{ "%.0f"|format(r.sale_revenue) }}</td>
+          <td class="text-center">{{ r.booking_count }}</td>
+          <td class="text-right">{{ "%.0f"|format(r.booking_revenue) }}</td>
+          <td class="text-right"><strong>{{ "%.0f"|format(r.total_revenue) }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
