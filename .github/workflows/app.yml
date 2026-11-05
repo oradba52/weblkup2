@@ -99,31 +99,31 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ── 4. Деплой (пример через SSH) ──────────────────────────
-  deploy:
-    needs: [docker]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+#  deploy:
+#    needs: [docker]
+#    runs-on: ubuntu-latest
+#    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Copy compose files to server
+#        uses: appleboy/scp-action@v0.1.7
+#        with:
+#          host: ${{ secrets.DEPLOY_HOST }}
+#          username: ${{ secrets.DEPLOY_USER }}
+#          key: ${{ secrets.DEPLOY_SSH_KEY }}
+#          source: "docker-compose.yml,nginx/"
+#          target: "/opt/gym_rental"
+#          strip_components: 0
 
-      - name: Copy compose files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "docker-compose.yml,nginx/"
-          target: "/opt/gym_rental"
-          strip_components: 0
-
-      - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /opt/gym_rental
-            docker compose pull
-            docker compose up -d --build
-            docker image prune -f
+#      - name: Deploy on server
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#          host: ${{ secrets.DEPLOY_HOST }}
+#          username: ${{ secrets.DEPLOY_USER }}
+#          key: ${{ secrets.DEPLOY_SSH_KEY }}
+#          script: |
+#            cd /opt/gym_rental
+#            docker compose pull
+#            docker compose up -d --build
+#            docker image prune -f
