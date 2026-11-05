@@ -5,7 +5,7 @@ WORKDIR /build
 
 # Системные библиотеки для сборки (bcrypt, reportlab, Pillow)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libffi-dev libjpeg-dev zlib1g-dev libpq-dev \
+    build-essential libffi-dev libjpeg-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY gym_rental/requirements.txt .
@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Только runtime-библиотеки (без build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libjpeg62-turbo zlib1g libpq5 \
+    libjpeg62-turbo zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем установленные пакеты из builder
@@ -27,12 +27,11 @@ COPY --from=builder /install /usr/local
 # Копируем код приложения
 COPY gym_rental/ .
 
-# Создаём директории для загрузок и статики
-RUN mkdir -p app/uploads app/static
+# Создаём директории для загрузок, статики и БД
+RUN mkdir -p app/uploads app/static /data
 
 # Переменные окружения по умолчанию (секреты передаются через docker-compose/.env)
-ENV DATABASE_URL=sqlite:///./gym_rental.db \
-    UPLOAD_DIR=app/uploads \
+ENV UPLOAD_DIR=app/uploads \
     MAX_UPLOAD_MB=5 \
     PYTHONUNBUFFERED=1
 

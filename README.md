@@ -54,7 +54,7 @@
 | Слой | Технология |
 |------|-----------|
 | Backend | FastAPI 0.115, SQLAlchemy 2.0, Pydantic 2.10 |
-| Database | SQLite (локально) / PostgreSQL (Docker) |
+| Database | SQLite (локально и в Docker) |
 | Migrations | Alembic 1.14 |
 | Auth | bcrypt, itsdangerous |
 | Templates | Jinja2, AdminLTE 3.2, Bootstrap 4.6 |
@@ -124,8 +124,9 @@ docker compose ps
 
 Сервисы:
 - **nginx** — http://localhost (порт настраивается через `HTTP_PORT`)
-- **app** — FastAPI (внутренний порт 8000)
-- **db** — PostgreSQL 16
+- **app** — FastAPI (внутренний порт 8000) + SQLite
+
+База данных SQLite хранится в Docker volume `db_data` (путь `/data/gym_rental.db` внутри контейнера), поэтому данные не теряются при перезапуске.
 
 При первом запуске автоматически:
 - Применяются миграции Alembic
@@ -146,12 +147,52 @@ docker compose down
 docker compose down -v
 ```
 
+## Миграции базы данных
+
+Для управления схемой БД используется **Alembic**. Миграции хранятся в `gym_rental/alembic/versions/`.
+
+### Как это работает
+
+- `alembic/env.py` читает `DATABASE_URL` из настроек приложения и связывает миграции с моделями SQLAlchemy.
+- Каждая миграция — Python-файл с функциями `upgrade()` (применить) и `downgrade()` (откатить).
+- В файле `0001_initial.py` создаются все таблицы (users, login_log, person, catalog, booking, sale) и индексы.
+- При запуске Docker-контейнера миграции применяются автоматически (`alembic upgrade head` в CMD).
+
+### Команды
+
+```bash
+cd gym_rental
+
+# Применить все миграции (создать/обновить таблицы)
+alembic upgrade head
+
+# Откатить последнюю миграцию
+alembic downgrade -1
+
+# Показать текущую версию
+alembic current
+
+# Показать историю миграций
+alembic history
+
+# Создать новую миграцию после изменения моделей
+alembic revision --autogenerate -m "описание изменений"
+```
+
+### Автоматический запуск
+
+В Docker-контейнере миграции выполняются при каждом старте — команда в `Dockerfile`:
+```
+alembic upgrade head && python -m scripts.create_admin && uvicorn app.main:app
+```
+Это безопасно: если миграции уже применены, Alembic пропускает их без ошибок.
+
 ## Структура проекта
 
 ```
 .
 ├── Dockerfile                    # Многоэтапная сборка Python-образа
-├── docker-compose.yml            # app + PostgreSQL + nginx
+├── docker-compose.yml            # app + SQLite (volume) + nginx
 ├── nginx/
 │   └── gym_rental.conf           # Конфигурация nginx reverse-proxy
 ├── .github/
@@ -187,7 +228,7 @@ docker compose down -v
 |-----------|-------------|----------|
 | `APP_NAME` | GymRental | Название приложения |
 | `SECRET_KEY` | change-me-... | Ключ для подписи сессий |
-| `DATABASE_URL` | sqlite:///./gym_rental.db | URL базы данных |
+| `DATABASE_URL` | sqlite:///./gym_rental.db | URL базы данных (в Docker: `sqlite:////data/gym_rental.db`) |
 | `ADMIN_USERNAME` | admin | Логин администратора |
 | `ADMIN_PASSWORD` | admin123 | Пароль администратора |
 | `MAX_UPLOAD_MB` | 5 | Макс. размер загружаемой фотографии |

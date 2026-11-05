@@ -9,36 +9,15 @@ services:
     container_name: gym_rental_app
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg2://gym:gym_password@db:5432/gym_rental
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      UPLOAD_DIR: app/uploads
-      MAX_UPLOAD_MB: "5"
+      DATABASE_URL: sqlite:////data/gym_rental.db
     volumes:
+      # SQLite база данных — сохраняется между перезапусками контейнера
+      - db_data:/data
+      # Загруженные фотографии товаров
       - app_uploads:/app/app/uploads
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - gym_net
-
-  # ── PostgreSQL ─────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: gym_rental_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: gym_rental
-      POSTGRES_USER: gym
-      POSTGRES_PASSWORD: gym_password
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gym -d gym_rental"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
     networks:
       - gym_net
 
@@ -57,8 +36,8 @@ services:
       - gym_net
 
 volumes:
-  app_uploads:
   db_data:
+  app_uploads:
 
 networks:
   gym_net:
