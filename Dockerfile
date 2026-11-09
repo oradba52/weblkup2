@@ -33,7 +33,8 @@ RUN mkdir -p app/uploads app/static /data
 # Переменные окружения по умолчанию (секреты передаются через docker-compose/.env)
 ENV UPLOAD_DIR=app/uploads \
     MAX_UPLOAD_MB=5 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 EXPOSE 8000
 
