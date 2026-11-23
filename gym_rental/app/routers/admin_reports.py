@@ -185,13 +185,18 @@ async def report_inventory(
         return RedirectResponse(url="/login", status_code=303)
 
     today = date.today()
+    price_totals = db.query(
+        Catalog.size.label("size"),
+        Catalog.type.label("type"),
+        func.sum(Catalog.price).label("total_price"),
+    ).group_by(Catalog.size, Catalog.type).subquery()
     rows_q = db.query(
         Catalog.size,
         Catalog.type,
         func.count(func.distinct(Catalog.id)).label("total"),
         func.count(func.distinct(case((Catalog.is_sold.is_(True), Catalog.id), else_=None))).label("sold"),
         func.count(func.distinct(case((Booking.id.isnot(None), Catalog.id), else_=None))).label("booked"),
-        func.coalesce(func.sum(func.distinct(Catalog.price)), 0).label("total_price"),
+        price_totals.c.total_price,
     ).outerjoin(
         Booking,
         and_(
@@ -201,7 +206,10 @@ async def report_inventory(
             Booking.data_start <= today,
             Booking.data_finish >= today,
         ),
-    ).group_by(Catalog.size, Catalog.type).order_by(Catalog.size, Catalog.type).all()
+    ).join(
+        price_totals,
+        and_(price_totals.c.size == Catalog.size, price_totals.c.type == Catalog.type),
+    ).group_by(Catalog.size, Catalog.type, price_totals.c.total_price).order_by(Catalog.size, Catalog.type).all()
 
     report_rows = []
     for r in rows_q:
