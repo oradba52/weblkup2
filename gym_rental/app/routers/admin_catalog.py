@@ -306,8 +306,8 @@ async def catalog_update(
         errors.append("Название обязательно (до 200 символов)")
     if size < 20 or size > 60:
         errors.append("Размер должен быть от 20 до 60")
-    if price <= 0:
-        errors.append("Цена должна быть больше 0")
+    if not math.isfinite(price) or price <= 0:
+        errors.append("Цена должна быть конечным числом больше 0")
     if type not in ("rent", "sale"):
         errors.append("Тип должен быть rent или sale")
 
