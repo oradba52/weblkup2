@@ -1,37 +1,38 @@
-"""FastAPI приложение — монолит с SSR (Jinja2 + AdminLTE).
-
-Этап 1: БД + модели + Alembic + seed-админ + авторизация + логи.
-"""
+"""FastAPI приложение — монолит с SSR (Jinja2 + AdminLTE)."""
 
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
+from pathlib import Path
+import mimetypes
 import os
 
 from app.config import settings
-from app.database import SessionLocal, engine, Base
+from app.database import SessionLocal
 from app.routers import auth, admin_catalog, admin_persons, admin_bookings, admin_sales, admin_reports
 from app.routers.auth import get_current_user
 
 app = FastAPI(title=settings.app_name)
 
-# Middleware для сессий (нужно для CSRF-токенов)
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+# Сессия для CSRF. Secure включается настройкой только при работе через HTTPS.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    max_age=settings.session_max_age,
+    same_site="lax",
+    https_only=settings.session_cookie_secure,
+)
 
-# Шаблоны Jinja2
 templates = Jinja2Templates(directory="app/templates")
 app.state.templates = templates
 
-# Статика (AdminLTE свои стили + загруженные картинки)
 os.makedirs("app/static", exist_ok=True)
 os.makedirs(settings.upload_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
-# Подключаем роутеры
 app.include_router(auth.router)
 app.include_router(admin_catalog.router)
 app.include_router(admin_persons.router)
@@ -50,24 +51,47 @@ def get_db():
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Защищает все маршруты кроме /login и статических файлов."""
+    """Защищает все маршруты приложения, кроме входа и публичной статики."""
     path = request.url.path
+    is_public_static = path == "/static" or path.startswith("/static/")
 
-    # Разрешённые пути без авторизации
-    public_paths = ["/login", "/static", "/uploads"]
-    if path == "/" or any(path.startswith(p) for p in public_paths):
+    if path == "/" or path == "/login" or path.startswith("/login/") or is_public_static:
         return await call_next(request)
 
-    # Проверяем авторизацию
     db = SessionLocal()
     try:
         user = get_current_user(request, db)
         if user is None:
             return RedirectResponse(url="/login", status_code=303)
+        if user.role != "admin":
+            return PlainTextResponse("Доступ запрещён", status_code=403)
     finally:
         db.close()
 
     return await call_next(request)
+
+
+@app.get("/uploads/{file_path:path}")
+async def serve_uploaded_file(request: Request, file_path: str):
+    """Отдаёт фотографии только авторизованным пользователям."""
+    relative_path = Path(file_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    upload_root = Path(settings.upload_dir).resolve()
+    file_path_resolved = (upload_root / relative_path).resolve()
+    if not file_path_resolved.is_relative_to(upload_root) or not file_path_resolved.is_file():
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    media_type, _ = mimetypes.guess_type(file_path_resolved.name)
+    return FileResponse(
+        file_path_resolved,
+        media_type=media_type or "application/octet-stream",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/")
@@ -105,11 +129,8 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         .count()
     )
 
-    # Продажи за текущий месяц
     month_start = date(today.year, today.month, 1)
-    sales_this_month = (
-        db.query(Sale).filter(Sale.sale_date >= month_start).count()
-    )
+    sales_this_month = db.query(Sale).filter(Sale.sale_date >= month_start).count()
     revenue_this_month = (
         db.query(Sale).filter(Sale.sale_date >= month_start)
         .with_entities(Sale.price)
@@ -117,27 +138,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     )
     revenue_total = sum(s[0] for s in revenue_this_month) if revenue_this_month else 0.0
 
-    # Просроченные брони
     overdue_bookings = db.query(Booking).filter(
         Booking.status == "active",
         Booking.data_finish < today,
     ).count()
 
-    # Последние 5 бронирований
-    recent_bookings = (
-        db.query(Booking)
-        .order_by(Booking.id.desc())
-        .limit(5)
-        .all()
-    )
-
-    # Последние 5 продаж
-    recent_sales = (
-        db.query(Sale)
-        .order_by(Sale.id.desc())
-        .limit(5)
-        .all()
-    )
+    recent_bookings = db.query(Booking).order_by(Booking.id.desc()).limit(5).all()
+    recent_sales = db.query(Sale).order_by(Sale.id.desc()).limit(5).all()
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -173,7 +180,7 @@ async def users_stub(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/admin/login-log")
 async def login_log(request: Request, db: Session = Depends(get_db)):
-    """Логи входов — реализуем уже на этапе 1."""
+    """Логи входов."""
     from app.models.login_log import LoginLog
     user = get_current_user(request, db)
     logs = db.query(LoginLog).order_by(LoginLog.created_at.desc()).limit(100).all()

@@ -72,11 +72,28 @@ async def person_list(
         .all()
     )
 
-    # Подсчёт бронирований и продаж
+    # Счётчики для всей страницы загружаются двумя групповыми запросами.
+    person_ids = [person.id for person in persons]
+    booking_counts = {}
+    sale_counts = {}
+    if person_ids:
+        booking_counts = dict(
+            db.query(Booking.person_id, func.count(Booking.id))
+            .filter(Booking.person_id.in_(person_ids))
+            .group_by(Booking.person_id)
+            .all()
+        )
+        sale_counts = dict(
+            db.query(Sale.person_id, func.count(Sale.id))
+            .filter(Sale.person_id.in_(person_ids))
+            .group_by(Sale.person_id)
+            .all()
+        )
+
     persons_data = []
     for p in persons:
-        booking_count = db.query(func.count(Booking.id)).filter(Booking.person_id == p.id).scalar() or 0
-        sale_count = db.query(func.count(Sale.id)).filter(Sale.person_id == p.id).scalar() or 0
+        booking_count = booking_counts.get(p.id, 0)
+        sale_count = sale_counts.get(p.id, 0)
         persons_data.append({
             "person": p,
             "full_name": full_name(p),

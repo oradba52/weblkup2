@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Сессия
     session_cookie_name: str = "gym_rental_session"
     session_max_age: int = 86400  # 24 часа
+    # Включать, когда приложение доступно только через HTTPS.
+    session_cookie_secure: bool = False
 
 
 settings = Settings()

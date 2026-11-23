@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Только runtime-библиотеки (без build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libjpeg62-turbo zlib1g \
+    libjpeg62-turbo zlib1g fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем установленные пакеты из builder

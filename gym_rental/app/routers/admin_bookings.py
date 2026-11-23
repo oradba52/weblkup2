@@ -9,15 +9,15 @@
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
-from datetime import date, datetime
+from sqlalchemy.orm import Session, joinedload
+from datetime import date
 
 from app.database import SessionLocal
 from app.models.catalog import Catalog
 from app.models.person import Person
 from app.models.booking import Booking
 from app.routers.auth import get_current_user, generate_csrf_token, verify_csrf_token
+from app.services.inventory_service import lock_catalog_item, has_overlapping_booking
 
 router = APIRouter(prefix="/admin/bookings")
 
@@ -44,21 +44,6 @@ def calculate_price(catalog: Catalog, data_start: date, data_finish: date) -> fl
     return round(catalog.price * max(days, 1), 2)
 
 
-def has_overlapping_booking(
-    db: Session, catalog_id: int, data_start: date, data_finish: date, exclude_id: int | None = None
-) -> Booking | None:
-    """Проверяет, есть ли пересечение с существующей активной бронью."""
-    query = db.query(Booking).filter(
-        Booking.catalog_id == catalog_id,
-        Booking.status == "active",
-        Booking.data_start <= data_finish,
-        Booking.data_finish >= data_start,
-    )
-    if exclude_id is not None:
-        query = query.filter(Booking.id != exclude_id)
-    return query.first()
-
-
 def full_name(p: Person) -> str:
     parts = [p.last_name, p.first_name]
     if p.second_name:
@@ -79,7 +64,7 @@ async def booking_list(
 
     csrf_token = generate_csrf_token(request)
 
-    query = db.query(Booking)
+    query = db.query(Booking).options(joinedload(Booking.catalog), joinedload(Booking.person))
 
     if status and status in ("active", "returned", "cancelled"):
         query = query.filter(Booking.status == status)
@@ -123,7 +108,7 @@ async def booking_new(
 
     csrf_token = generate_csrf_token(request)
 
-    catalog_items = db.query(Catalog).filter(Catalog.is_sold == False).order_by(Catalog.name).all()
+    catalog_items = db.query(Catalog).filter(Catalog.type == "rent", Catalog.is_sold.is_(False)).order_by(Catalog.name).all()
     persons = db.query(Person).order_by(Person.last_name, Person.first_name).all()
 
     return request.app.state.templates.TemplateResponse(
@@ -159,7 +144,7 @@ async def booking_create(
     if not verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Ошибка CSRF")
 
-    catalog_items = db.query(Catalog).filter(Catalog.is_sold == False).order_by(Catalog.name).all()
+    catalog_items = db.query(Catalog).filter(Catalog.type == "rent", Catalog.is_sold.is_(False)).order_by(Catalog.name).all()
     persons = db.query(Person).order_by(Person.last_name, Person.first_name).all()
 
     errors = []
@@ -193,6 +178,8 @@ async def booking_create(
 
     if catalog_item is None:
         errors.append("Товар не найден")
+    elif catalog_item.type != "rent":
+        errors.append("Товар не предназначен для проката")
     elif catalog_item.is_sold:
         errors.append("Товар уже продан, его нельзя забронировать")
 
@@ -202,8 +189,11 @@ async def booking_create(
     if d_start and d_finish and d_finish < d_start:
         errors.append("Дата окончания не может быть раньше даты начала")
 
-    if catalog_item and d_start and d_finish:
-        overlap = has_overlapping_booking(db, catalog_item.id, d_start, d_finish)
+    if catalog_item and catalog_item.type == "rent" and d_start and d_finish and d_finish >= d_start:
+        catalog_item = lock_catalog_item(db, catalog_item.id)
+        if catalog_item is None or catalog_item.is_sold:
+            errors.append("Товар уже недоступен для проката")
+        overlap = has_overlapping_booking(db, catalog_item.id, d_start, d_finish) if catalog_item else None
         if overlap:
             errors.append(
                 f"Товар уже забронирован на этот период (бронь #{overlap.id}: "
@@ -239,7 +229,11 @@ async def booking_create(
         status="active",
     )
     db.add(booking)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/bookings", status_code=303)
 
@@ -337,9 +331,13 @@ async def booking_update(
     if d_start and d_finish and d_finish < d_start:
         errors.append("Дата окончания не может быть раньше даты начала")
 
-    # Проверка пересечения только если бронь активна
-    if catalog_item and d_start and d_finish and status == "active":
-        overlap = has_overlapping_booking(db, catalog_item.id, d_start, d_finish, exclude_id=booking.id)
+    # Блокируем товар до конца транзакции, чтобы параллельные изменения
+    # не могли создать пересекающиеся активные брони.
+    if catalog_item and d_start and d_finish and d_finish >= d_start and status == "active":
+        catalog_item = lock_catalog_item(db, catalog_item.id)
+        if catalog_item is None or catalog_item.type != "rent" or catalog_item.is_sold:
+            errors.append("Товар больше недоступен для проката")
+        overlap = has_overlapping_booking(db, catalog_item.id, d_start, d_finish, exclude_id=booking.id) if catalog_item else None
         if overlap:
             errors.append(
                 f"Товар уже забронирован на этот период (бронь #{overlap.id})"
@@ -368,8 +366,14 @@ async def booking_update(
     booking.data_finish = d_finish
     booking.fact_finish = d_fact
     booking.status = status
+    if catalog_item is None or catalog_item.type != "rent":
+        raise HTTPException(status_code=409, detail="Товар не предназначен для проката")
     booking.total_price = calculate_price(catalog_item, d_start, d_finish)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/bookings", status_code=303)
 
@@ -393,6 +397,10 @@ async def booking_delete(
         raise HTTPException(status_code=404, detail="Бронирование не найдено")
 
     db.delete(booking)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/bookings", status_code=303)

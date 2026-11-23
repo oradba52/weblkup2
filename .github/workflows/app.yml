@@ -51,6 +51,9 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install system fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
+
       - name: Install deps
         run: pip install -r requirements.txt
 
@@ -61,6 +64,9 @@ jobs:
           python -m py_compile app/services/*.py
           python -m py_compile app/models/*.py
           python -m py_compile app/schemas/*.py
+
+      - name: Run tests
+        run: PYTHONPATH=. pytest -q
 
       - name: Create admin seed
         run: python -m scripts.create_admin

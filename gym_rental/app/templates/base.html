@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}GymRental — система учёта{% endblock %}</title>
-  <!-- AdminLTE 3 + Bootstrap 4 (CDN) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
@@ -104,10 +102,8 @@
   </footer>
 </div>
 
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7/dist/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+<!-- Локальные интерактивные элементы интерфейса -->
+<script src="/static/js/app.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
