@@ -37,88 +37,187 @@ def get_db():
 # ── Excel helpers ──────────────────────────────────────────
 
 def make_excel(headers: list[str], rows: list[list]) -> bytes:
-    """Создаёт XLSX из заголовков и строк данных."""
+    """Создаёт XLSX потоковым writer-ом, не удерживая все ячейки в памяти."""
     from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
     from openpyxl.styles import Font, PatternFill, Alignment
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Отчёт"
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("Отчёт")
+    ws.freeze_panes = "A2"
 
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+    widths = [min(max(len(str(value)) + 4, 12), 50) for value in headers]
 
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
+    header_cells = []
+    for index, value in enumerate(headers):
+        cell = WriteOnlyCell(ws, value=value)
         cell.font = header_font
         cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        header_cells.append(cell)
+    ws.append(header_cells)
 
-    for row_idx, row_data in enumerate(rows, 2):
-        for col_idx, val in enumerate(row_data, 1):
-            if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@")):
-                val = "'" + val
-            ws.cell(row=row_idx, column=col_idx, value=val)
+    row_count = 1
+    for row_data in rows:
+        cells = []
+        for index, value in enumerate(row_data):
+            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+                value = "'" + value
+            if index >= len(widths):
+                widths.append(12)
+            if value is not None:
+                widths[index] = min(max(widths[index], len(str(value)) + 2), 50)
+            cells.append(WriteOnlyCell(ws, value=value))
+        ws.append(cells)
+        row_count += 1
 
-    # Авто-ширина
-    for col in ws.columns:
-        max_len = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                if cell.value and len(str(cell.value)) > max_len:
-                    max_len = len(str(cell.value))
-            except Exception:
-                pass
-        ws.column_dimensions[col_letter].width = min(max_len + 4, 50)
+    ws.auto_filter.ref = f"A1:{_excel_column_name(len(headers))}{row_count}"
+    for index, width in enumerate(widths, 1):
+        ws.column_dimensions[_excel_column_name(index)].width = width
 
     buf = io.BytesIO()
     wb.save(buf)
-    buf.seek(0)
     return buf.getvalue()
 
 
+def _excel_column_name(index: int) -> str:
+    """Преобразует 1-based индекс колонки в Excel-обозначение."""
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
 def make_pdf(title: str, headers: list[str], rows: list[list]) -> bytes:
-    """Создаёт PDF-отчёт с таблицей."""
+    """Создаёт многостраничный PDF с корректной кириллицей и переносом текста."""
+    from pathlib import Path
+    from xml.sax.saxutils import escape
+
     from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.enums import TA_CENTER
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), margins=[15 * mm] * 4)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    title_style = ParagraphStyle(
-        "Title", parent=styles["Title"], fontSize=16, alignment=TA_CENTER, spaceAfter=10
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
     )
-    elements.append(Paragraph(title, title_style))
-    elements.append(Spacer(1, 5 * mm))
 
-    table_data = [headers]
+    font_candidates = (
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
+    )
+    bold_candidates = (
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        Path("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+    )
+    regular_path = next((path for path in font_candidates if path.is_file()), None)
+    bold_path = next((path for path in bold_candidates if path.is_file()), None)
+    if regular_path is None or bold_path is None:
+        raise RuntimeError(
+            "Для PDF-отчётов необходимы шрифты DejaVu Sans с поддержкой кириллицы"
+        )
+
+    if "GymRentalDejaVu" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("GymRentalDejaVu", str(regular_path)))
+    if "GymRentalDejaVu-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("GymRentalDejaVu-Bold", str(bold_path)))
+
+    page_size = landscape(A4)
+    page_width, page_height = page_size
+    margin = 12 * mm
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=page_size,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=17 * mm,
+        bottomMargin=17 * mm,
+        title=title,
+        author="GymRental",
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "GymRentalTitle",
+        parent=styles["Title"],
+        fontName="GymRentalDejaVu-Bold",
+        fontSize=15,
+        leading=19,
+        alignment=TA_CENTER,
+        spaceAfter=5 * mm,
+    )
+    header_style = ParagraphStyle(
+        "GymRentalTableHeader",
+        fontName="GymRentalDejaVu-Bold",
+        fontSize=7,
+        leading=9,
+        alignment=TA_CENTER,
+        textColor=colors.white,
+        wordWrap="CJK",
+    )
+    cell_style = ParagraphStyle(
+        "GymRentalTableCell",
+        fontName="GymRentalDejaVu",
+        fontSize=7,
+        leading=9,
+        alignment=TA_LEFT,
+        wordWrap="CJK",
+    )
+
+    table_data = [[Paragraph(escape(str(value)), header_style) for value in headers]]
     for row in rows:
-        table_data.append([str(v) for v in row])
+        table_data.append([
+            Paragraph(escape("" if value is None else str(value)), cell_style)
+            for value in row
+        ])
 
-    col_widths = [180 / len(headers) * mm] * len(headers)
-    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    available_width = page_width - 2 * margin
+    column_width = available_width / max(len(headers), 1)
+    table = Table(
+        table_data,
+        colWidths=[column_width] * len(headers),
+        repeatRows=1,
+        hAlign="LEFT",
+        splitByRow=1,
+    )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2C3E50")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 9),
-        ("FONTSIZE", (0, 1), (-1, -1), 8),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F0F0F0")]),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 0), (-1, 0), "GymRentalDejaVu-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "GymRentalDejaVu"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#AAB2BD")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F5F7")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    elements.append(table)
 
-    doc.build(elements)
-    buf.seek(0)
+    def draw_page_number(canvas, document):
+        canvas.saveState()
+        canvas.setFont("GymRentalDejaVu", 8)
+        canvas.setFillColor(colors.HexColor("#667085"))
+        canvas.drawRightString(
+            page_width - margin,
+            8 * mm,
+            f"Страница {document.page}",
+        )
+        canvas.restoreState()
+
+    elements = [Paragraph(escape(title), title_style), Spacer(1, 2 * mm), table]
+    doc.build(elements, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
     return buf.getvalue()
 
 
