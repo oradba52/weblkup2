@@ -16,6 +16,7 @@ import os
 from app.database import SessionLocal
 from app.models.catalog import Catalog
 from app.models.booking import Booking
+from app.models.sale import Sale
 from app.routers.auth import get_current_user, generate_csrf_token, verify_csrf_token
 from app.services.upload_service import save_upload, delete_file
 from app.schemas.catalog import CatalogCreateForm, CatalogUpdateForm
@@ -43,7 +44,7 @@ def get_item_status(item: Catalog, db: Session) -> str:
         db.query(Booking)
         .filter(
             Booking.catalog_id == item.id,
-            Booking.status.in_(["active", "returned"]),
+            Booking.status == "active",
             Booking.data_start <= today,
             Booking.data_finish >= today,
         )
@@ -290,6 +291,37 @@ async def catalog_update(
     if type not in ("rent", "sale"):
         errors.append("Тип должен быть rent или sale")
 
+    if errors:
+        csrf_token = generate_csrf_token(request)
+        return request.app.state.templates.TemplateResponse(
+            "catalog/form.html",
+            {
+                "request": request,
+                "current_user": user,
+                "active_page": "catalog",
+                "csrf_token": csrf_token,
+                "item": item,
+                "errors": errors,
+            },
+            status_code=400,
+        )
+
+    # Тип товара и признак продажи должны соответствовать связанным операциям.
+    existing_sales = db.query(Sale.id).filter(Sale.catalog_id == item.id).first()
+    existing_bookings = db.query(Booking.id).filter(Booking.catalog_id == item.id).first()
+    if type == "rent" and existing_sales:
+        errors.append("Нельзя перевести товар в прокат: по нему уже есть продажа")
+    if type == "sale" and existing_bookings:
+        errors.append("Нельзя перевести товар в продажу: по нему есть бронирования")
+    if existing_sales and is_sold != "1":
+        errors.append("Нельзя снять статус «продан»: по товару зарегистрирована продажа")
+    if is_sold == "1" and existing_bookings:
+        active_booking = db.query(Booking.id).filter(
+            Booking.catalog_id == item.id,
+            Booking.status == "active",
+        ).first()
+        if active_booking:
+            errors.append("Нельзя отметить товар проданным при активной брони")
     if errors:
         csrf_token = generate_csrf_token(request)
         return request.app.state.templates.TemplateResponse(
