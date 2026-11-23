@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.responses import RedirectResponse, FileResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
@@ -63,6 +63,8 @@ async def auth_middleware(request: Request, call_next):
         user = get_current_user(request, db)
         if user is None:
             return RedirectResponse(url="/login", status_code=303)
+        if user.role != "admin":
+            return PlainTextResponse("Доступ запрещён", status_code=403)
     finally:
         db.close()
 
