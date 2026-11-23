@@ -173,6 +173,8 @@ async def catalog_create(
 
     # Валидация
     errors = []
+    if is_sold == "1":
+        errors.append("Продажа оформляется через раздел «Продажи»")
     if not name or len(name) > 200:
         errors.append("Название обязательно (до 200 символов)")
     if size < 20 or size > 60:
@@ -315,6 +317,8 @@ async def catalog_update(
         errors.append("Нельзя перевести товар в продажу: по нему есть бронирования")
     if existing_sales and is_sold != "1":
         errors.append("Нельзя снять статус «продан»: по товару зарегистрирована продажа")
+    if is_sold == "1" and not existing_sales:
+        errors.append("Продажа оформляется через раздел «Продажи»")
     if is_sold == "1" and existing_bookings:
         active_booking = db.query(Booking.id).filter(
             Booking.catalog_id == item.id,
