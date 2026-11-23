@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from datetime import date
 import os
+import math
 
 from app.database import SessionLocal
 from app.models.catalog import Catalog
@@ -20,6 +21,7 @@ from app.models.sale import Sale
 from app.routers.auth import get_current_user, generate_csrf_token, verify_csrf_token
 from app.services.upload_service import save_upload, delete_file
 from app.schemas.catalog import CatalogCreateForm, CatalogUpdateForm
+from app.services.inventory_service import lock_catalog_item
 
 router = APIRouter(prefix="/admin/catalog")
 
@@ -179,7 +181,7 @@ async def catalog_create(
         errors.append("Название обязательно (до 200 символов)")
     if size < 20 or size > 60:
         errors.append("Размер должен быть от 20 до 60")
-    if price <= 0:
+    if not math.isfinite(price) or price <= 0:
         errors.append("Цена должна быть больше 0")
     if type not in ("rent", "sale"):
         errors.append("Тип должен быть rent или sale")
@@ -224,7 +226,7 @@ async def catalog_create(
         price=price,
         type=type,
         path=rel_path,
-        is_sold=(is_sold == "1"),
+        is_sold=False,
     )
     db.add(item)
     db.commit()
@@ -279,6 +281,9 @@ async def catalog_update(
         raise HTTPException(status_code=403, detail="Ошибка CSRF")
 
     item = db.query(Catalog).filter(Catalog.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Товар не найден")
+    item = lock_catalog_item(db, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
@@ -341,13 +346,13 @@ async def catalog_update(
             status_code=400,
         )
 
-    # Если загружена новая картинка — сохраняем, старую удаляем
+    # Новую картинку сохраняем до commit; старую удаляем только после успешной записи.
+    old_image_path = item.path
+    new_image_path = None
     if image and image.filename:
         try:
             rel_path = await save_upload(image)
-            # Удаляем старую картинку
-            if item.path:
-                delete_file(item.path)
+            new_image_path = rel_path
             item.path = rel_path
         except HTTPException as e:
             csrf_token = generate_csrf_token(request)
@@ -369,7 +374,15 @@ async def catalog_update(
     item.price = price
     item.type = type
     item.is_sold = (is_sold == "1")
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if new_image_path:
+            delete_file(new_image_path)
+        raise
+    if new_image_path and old_image_path:
+        delete_file(old_image_path)
 
     return RedirectResponse(url="/admin/catalog", status_code=303)
 
@@ -392,12 +405,26 @@ async def catalog_delete(
     item = db.query(Catalog).filter(Catalog.id == item_id).first()
     if item is None:
         raise HTTPException(status_code=404, detail="Товар не найден")
+    item = lock_catalog_item(db, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Удаляем картинку с диска
-    if item.path:
-        delete_file(item.path)
+    has_sales = db.query(Sale.id).filter(Sale.catalog_id == item_id).first()
+    has_bookings = db.query(Booking.id).filter(Booking.catalog_id == item_id).first()
+    if has_sales or has_bookings:
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить товар с историей продаж или бронирований",
+        )
 
+    image_path = item.path
     db.delete(item)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    if image_path:
+        delete_file(image_path)
 
     return RedirectResponse(url="/admin/catalog", status_code=303)
