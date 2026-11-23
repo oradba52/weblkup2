@@ -144,7 +144,7 @@ async def booking_create(
     if not verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Ошибка CSRF")
 
-    catalog_items = db.query(Catalog).filter(Catalog.is_sold == False).order_by(Catalog.name).all()
+    catalog_items = db.query(Catalog).filter(Catalog.type == "rent", Catalog.is_sold.is_(False)).order_by(Catalog.name).all()
     persons = db.query(Person).order_by(Person.last_name, Person.first_name).all()
 
     errors = []
