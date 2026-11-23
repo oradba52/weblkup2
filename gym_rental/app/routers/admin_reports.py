@@ -12,7 +12,7 @@
 from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, and_
 from datetime import date, datetime
 import io
 
@@ -56,6 +56,8 @@ def make_excel(headers: list[str], rows: list[list]) -> bytes:
 
     for row_idx, row_data in enumerate(rows, 2):
         for col_idx, val in enumerate(row_data, 1):
+            if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@")):
+                val = "'" + val
             ws.cell(row=row_idx, column=col_idx, value=val)
 
     # Авто-ширина
@@ -129,8 +131,13 @@ def streaming_response(data: bytes, filename: str, media_type: str) -> Streaming
 
 
 def parse_date_range(d_from: str | None, d_to: str | None) -> tuple[date | None, date | None]:
-    d_from_parsed = date.fromisoformat(d_from) if d_from else None
-    d_to_parsed = date.fromisoformat(d_to) if d_to else None
+    try:
+        d_from_parsed = date.fromisoformat(d_from) if d_from else None
+        d_to_parsed = date.fromisoformat(d_to) if d_to else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Неверный формат даты. Используйте YYYY-MM-DD.") from exc
+    if d_from_parsed and d_to_parsed and d_from_parsed > d_to_parsed:
+        raise HTTPException(status_code=400, detail="Начальная дата не может быть позже конечной.")
     return d_from_parsed, d_to_parsed
 
 
@@ -177,38 +184,50 @@ async def report_inventory(
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/login", status_code=303)
 
-    # Группировка по размеру и типу
+    today = date.today()
     rows_q = db.query(
         Catalog.size,
         Catalog.type,
-        func.count(Catalog.id).label("total"),
-        func.sum(case((Catalog.is_sold == True, 1), else_=0)).label("sold"),
-        func.sum(case((Catalog.is_sold == False, 1), else_=0)).label("free"),
-        func.coalesce(func.sum(Catalog.price), 0).label("total_price"),
+        func.count(func.distinct(Catalog.id)).label("total"),
+        func.count(func.distinct(case((Catalog.is_sold.is_(True), Catalog.id), else_=None))).label("sold"),
+        func.count(func.distinct(case((Booking.id.isnot(None), Catalog.id), else_=None))).label("booked"),
+        func.coalesce(func.sum(func.distinct(Catalog.price)), 0).label("total_price"),
+    ).outerjoin(
+        Booking,
+        and_(
+            Catalog.type == "rent",
+            Booking.catalog_id == Catalog.id,
+            Booking.status == "active",
+            Booking.data_start <= today,
+            Booking.data_finish >= today,
+        ),
     ).group_by(Catalog.size, Catalog.type).order_by(Catalog.size, Catalog.type).all()
 
     report_rows = []
     for r in rows_q:
+        sold = r.sold or 0
+        booked = r.booked or 0
         report_rows.append({
             "size": r.size,
             "type": "Прокат" if r.type == "rent" else "Продажа",
             "total": r.total,
-            "sold": r.sold or 0,
-            "free": r.free or 0,
+            "sold": sold,
+            "booked": booked,
+            "free": max(r.total - sold - booked, 0),
             "total_price": float(r.total_price or 0),
         })
 
     if export == "excel":
         data = make_excel(
-            ["Размер", "Тип", "Всего", "Продано", "Свободно", "Суммарная цена, руб."],
-            [[r["size"], r["type"], r["total"], r["sold"], r["free"], r["total_price"]] for r in report_rows],
+            ["Размер", "Тип", "Всего", "Продано", "Забронировано", "Свободно", "Суммарная цена, руб."],
+            [[r["size"], r["type"], r["total"], r["sold"], r["booked"], r["free"], r["total_price"]] for r in report_rows],
         )
         return streaming_response(data, "ostatki.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     elif export == "pdf":
         data = make_pdf(
             "Остатки на складе",
-            ["Размер", "Тип", "Всего", "Продано", "Свободно", "Цена, руб."],
-            [[r["size"], r["type"], r["total"], r["sold"], r["free"], f'{r["total_price"]:.0f}'] for r in report_rows],
+            ["Размер", "Тип", "Всего", "Продано", "Бронь", "Свободно", "Цена, руб."],
+            [[r["size"], r["type"], r["total"], r["sold"], r["booked"], r["free"], f'{r["total_price"]:.0f}'] for r in report_rows],
         )
         return streaming_response(data, "ostatki.pdf", "application/pdf")
 
@@ -243,7 +262,7 @@ async def report_revenue(
         sale_query = sale_query.filter(Sale.sale_date <= d_to)
     sales = sale_query.order_by(Sale.sale_date.desc()).all()
 
-    booking_query = db.query(Booking)
+    booking_query = db.query(Booking).filter(Booking.status.in_(["active", "returned"]))
     if d_from:
         booking_query = booking_query.filter(Booking.data_start >= d_from)
     if d_to:
@@ -316,7 +335,7 @@ async def report_bookings(
 
     query = db.query(Booking)
     if d_from:
-        query = query.filter(Booking.data_start >= d_from)
+        query = query.filter(Booking.data_finish >= d_from)
     if d_to:
         query = query.filter(Booking.data_start <= d_to)
     if status and status in ("active", "returned", "cancelled"):
@@ -449,7 +468,7 @@ async def report_top_customers(
         Booking.person_id,
         func.sum(Booking.total_price).label("booking_revenue"),
         func.count(Booking.id).label("booking_count"),
-    ).group_by(Booking.person_id)
+    ).filter(Booking.status.in_(["active", "returned"])).group_by(Booking.person_id)
     if d_from:
         booking_q = booking_q.filter(Booking.data_start >= d_from)
     if d_to:
