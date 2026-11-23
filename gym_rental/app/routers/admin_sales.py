@@ -347,10 +347,11 @@ async def sale_delete(
 
     # Блокируем товар и снимаем флаг только после проверки других продаж.
     catalog_id = sale.catalog_id
+    deleted_sale_id = sale.id
     catalog_item = lock_catalog_item(db, catalog_id)
     db.delete(sale)
     if catalog_item is not None:
-        release_catalog_after_sale_delete(db, catalog_id, sale.id)
+        release_catalog_after_sale_delete(db, catalog_id, deleted_sale_id)
     try:
         db.commit()
     except Exception:
