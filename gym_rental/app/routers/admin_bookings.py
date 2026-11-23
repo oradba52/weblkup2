@@ -9,7 +9,7 @@
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import date
 
 from app.database import SessionLocal
@@ -64,7 +64,7 @@ async def booking_list(
 
     csrf_token = generate_csrf_token(request)
 
-    query = db.query(Booking)
+    query = db.query(Booking).options(joinedload(Booking.catalog), joinedload(Booking.person))
 
     if status and status in ("active", "returned", "cancelled"):
         query = query.filter(Booking.status == status)
