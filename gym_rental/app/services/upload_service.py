@@ -1,83 +1,110 @@
-"""Сервис загрузки картинок: валидация, uuid-имена, структура /uploads/YYYY/MM/.
-
-Правила:
-- Разрешённые форматы: jpg, png, webp
-- Максимальный размер: 5 МБ (настраивается через MAX_UPLOAD_MB)
-- Имя файла заменяется на uuid + оригинальное расширение
-- Файл сохраняется в app/uploads/YYYY/MM/
-"""
+"""Безопасная загрузка и удаление фотографий каталога."""
 
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
+
 from fastapi import UploadFile, HTTPException
 
 from app.config import settings
 
-# Разрешённые MIME-типы и соответствующие расширения
+
 ALLOWED_MIME = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/webp": {".webp"},
 }
 
-# Разрешённые расширения (двойная проверка)
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+def _matches_image_signature(content: bytes, content_type: str) -> bool:
+    """Проверяет сигнатуру файла, а не только переданный браузером MIME."""
+    if content_type == "image/jpeg":
+        return content.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return content.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/webp":
+        return (
+            len(content) >= 12
+            and content[0:4] == b"RIFF"
+            and content[8:12] == b"WEBP"
+        )
+    return False
 
 
 async def save_upload(file: UploadFile) -> str:
     """
-    Сохраняет загруженный файл на диск.
-    Возвращает относительный путь (для сохранения в БД, например: 2026/10/uuid.jpg).
+    Сохраняет файл в app/uploads/YYYY/MM/.
+    Размер чтения ограничен MAX_UPLOAD_MB + 1 байт, MIME и расширение
+    сверяются с сигнатурой содержимого.
     """
-    # Проверка MIME-типа
-    if file.content_type not in ALLOWED_MIME:
+    content_type = (file.content_type or "").lower()
+    allowed_extensions = ALLOWED_MIME.get(content_type)
+    if allowed_extensions is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Недопустимый формат файла. Разрешены: JPG, PNG, WebP",
+            detail="Недопустимый формат файла. Разрешены: JPG, PNG, WebP",
         )
 
-    # Проверка расширения
-    original_ext = os.path.splitext(file.filename or "")[1].lower()
-    if original_ext not in ALLOWED_EXTENSIONS:
+    original_ext = Path(file.filename or "").suffix.lower()
+    if original_ext not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail=f"Недопустимое расширение файла. Разрешены: .jpg, .png, .webp",
+            detail="Расширение файла не соответствует его формату",
         )
 
-    # Читаем содержимое и проверяем размер
-    content = await file.read()
-    max_bytes = settings.max_upload_mb * 1024 * 1024
+    max_bytes = max(1, settings.max_upload_mb) * 1024 * 1024
+    content = await file.read(max_bytes + 1)
     if len(content) > max_bytes:
         raise HTTPException(
             status_code=400,
             detail=f"Файл слишком большой. Максимум: {settings.max_upload_mb} МБ",
         )
 
-    # Генерируем путь: YYYY/MM/uuid.ext
+    if not _matches_image_signature(content, content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="Содержимое файла не соответствует формату изображения",
+        )
+
     now = datetime.now()
-    year = now.strftime("%Y")
-    month = now.strftime("%m")
-    rel_dir = os.path.join(year, month)
-    abs_dir = os.path.join(settings.upload_dir, rel_dir)
-    os.makedirs(abs_dir, exist_ok=True)
+    rel_dir = Path(now.strftime("%Y")) / now.strftime("%m")
+    upload_root = Path(settings.upload_dir)
+    abs_dir = upload_root / rel_dir
+    abs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Нормализуем расширение (jpeg → jpg)
-    ext = ".jpg" if original_ext in (".jpg", ".jpeg") else original_ext
-    filename = f"{uuid.uuid4().hex}{ext}"
-    rel_path = os.path.join(rel_dir, filename).replace("\\", "/")
-    abs_path = os.path.join(abs_dir, filename)
+    extension = ".jpg" if original_ext in (".jpg", ".jpeg") else original_ext
+    filename = f"{uuid.uuid4().hex}{extension}"
+    rel_path = rel_dir / filename
+    abs_path = abs_dir / filename
 
-    with open(abs_path, "wb") as f:
-        f.write(content)
+    try:
+        abs_path.write_bytes(content)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Не удалось сохранить файл") from exc
 
-    return rel_path
+    return rel_path.as_posix()
 
 
 def delete_file(rel_path: str) -> None:
-    """Удаляет файл с диска по относительному пути."""
+    """Удаляет только файл, расположенный внутри каталога загрузок."""
     if not rel_path:
         return
-    abs_path = os.path.join(settings.upload_dir, rel_path)
-    if os.path.exists(abs_path):
-        os.remove(abs_path)
+
+    relative_path = Path(rel_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        return
+
+    upload_root = Path(settings.upload_dir).resolve()
+    candidate = upload_root / relative_path
+    resolved_candidate = candidate.resolve()
+
+    if not resolved_candidate.is_relative_to(upload_root):
+        return
+
+    try:
+        if candidate.is_file() or candidate.is_symlink():
+            candidate.unlink()
+    except OSError:
+        # Удаление старого изображения не должно ломать основную операцию.
+        return

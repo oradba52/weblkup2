@@ -1,7 +1,7 @@
 """Сервис авторизации: хеширование паролей, работа с сессией, логирование входов."""
 
 import bcrypt
-from itsdangerous import URLSafeSerializer, BadSignature
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,9 +22,9 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def get_serializer() -> URLSafeSerializer:
-    """Создаёт сериализатор для подписи cookie сессии."""
-    return URLSafeSerializer(settings.secret_key, salt="gym_rental-auth")
+def get_serializer() -> URLSafeTimedSerializer:
+    """Создаёт сериализатор сессии с временной меткой для контроля срока жизни."""
+    return URLSafeTimedSerializer(settings.secret_key, salt="gym_rental-auth")
 
 
 def create_session_token(user_id: int) -> str:
@@ -33,11 +33,20 @@ def create_session_token(user_id: int) -> str:
 
 
 def verify_session_token(token: str) -> dict | None:
-    """Проверяет и декодирует токен сессии. Возвращает payload или None."""
+    """Проверяет подпись и срок действия токена сессии."""
     try:
-        return get_serializer().loads(token, max_age=settings.session_max_age)
-    except BadSignature:
+        payload = get_serializer().loads(token, max_age=settings.session_max_age)
+    except (BadSignature, TypeError, ValueError):
         return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    user_id = payload.get("user_id")
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        return None
+
+    return payload
 
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:

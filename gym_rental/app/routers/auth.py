@@ -35,9 +35,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | 
     if payload is None:
         return None
     user_id = payload.get("user_id")
-    if user_id is None:
-        return None
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     return user
 
 
@@ -57,7 +55,7 @@ def generate_csrf_token(request: Request) -> str:
 
 
 def verify_csrf_token(request: Request, token: str) -> bool:
-    """Проверяет CSRF-токен из формы против токена в сессии."""
+    """Проверяет CSRF-токен из сессии."""
     session_token = request.session.get("csrf_token")
     if not session_token or not token:
         return False
@@ -86,7 +84,6 @@ async def login_submit(
     db: Session = Depends(get_db),
 ):
     """Обрабатывает отправку формы входа."""
-    # Проверка CSRF
     if not verify_csrf_token(request, csrf_token):
         csrf_token = generate_csrf_token(request)
         return request.app.state.templates.TemplateResponse(
@@ -101,7 +98,6 @@ async def login_submit(
     user = auth_service.authenticate_user(db, username, password)
 
     if user is None:
-        # Логируем неудачную попытку
         auth_service.log_login_attempt(db, username, False, ip, ua, None)
         csrf_token = generate_csrf_token(request)
         return request.app.state.templates.TemplateResponse(
@@ -110,10 +106,8 @@ async def login_submit(
             status_code=401,
         )
 
-    # Логируем успешный вход
     auth_service.log_login_attempt(db, username, True, ip, ua, user.id)
 
-    # Создаём cookie сессии
     token = auth_service.create_session_token(user.id)
     response = RedirectResponse(url="/admin", status_code=303)
     response.set_cookie(
@@ -121,7 +115,9 @@ async def login_submit(
         value=token,
         max_age=settings.session_max_age,
         httponly=True,
+        secure=settings.session_cookie_secure,
         samesite="lax",
+        path="/",
     )
     return response
 
@@ -130,5 +126,11 @@ async def login_submit(
 async def logout(response: Response):
     """Выход — удаляет cookie сессии."""
     response = RedirectResponse(url="/login", status_code=303)
-    response.delete_cookie(settings.session_cookie_name)
+    response.delete_cookie(
+        settings.session_cookie_name,
+        path="/",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
     return response
