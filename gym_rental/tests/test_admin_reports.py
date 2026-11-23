@@ -25,3 +25,24 @@ def test_excel_export_neutralizes_formula_like_text():
 
     assert cell.data_type == "s"
     assert cell.value.startswith("'=")
+
+
+def test_excel_export_handles_empty_report():
+    content = make_excel(["ID", "Name"], [])
+    workbook = load_workbook(BytesIO(content), read_only=True)
+    rows = list(workbook.active.iter_rows(values_only=True))
+
+    assert rows == [("ID", "Name")]
+
+
+def test_pdf_export_embeds_cyrillic_font_and_escapes_cell_text():
+    from app.routers.admin_reports import make_pdf
+
+    content = make_pdf(
+        "Отчёт по бронированиям",
+        ["Заказчик", "Комментарий"],
+        [["Иван Иванов", "<script>alert(1)</script>"]],
+    )
+
+    assert content.startswith(b"%PDF")
+    assert b"/FontFile2" in content
