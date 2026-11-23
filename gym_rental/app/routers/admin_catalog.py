@@ -102,10 +102,23 @@ async def catalog_list(
         .all()
     )
 
-    # Добавляем статус каждому товару
+    # Получаем занятые сегодня товары одним запросом вместо запроса на каждый элемент.
+    item_ids = [item.id for item in items]
+    booked_ids = set()
+    if item_ids:
+        booked_ids = {
+            row[0]
+            for row in db.query(Booking.catalog_id).filter(
+                Booking.catalog_id.in_(item_ids),
+                Booking.status == "active",
+                Booking.data_start <= date.today(),
+                Booking.data_finish >= date.today(),
+            ).all()
+        }
+
     items_with_status = []
     for item in items:
-        status = get_item_status(item, db)
+        status = "sold" if item.is_sold else ("booked" if item.id in booked_ids else "free")
         label, badge = STATUS_LABELS[status]
         items_with_status.append({
             "item": item,
