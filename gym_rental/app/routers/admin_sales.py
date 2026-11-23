@@ -195,7 +195,8 @@ async def sale_create(
 
     # Сериализуем создание продажи с другими операциями над тем же товаром.
     catalog_item = lock_catalog_item(db, catalog_item.id)
-    if catalog_item is None or catalog_item.type != "sale" or catalog_item.is_sold:
+    existing_sale = db.query(Sale.id).filter(Sale.catalog_id == catalog_item.id).first() if catalog_item else None
+    if catalog_item is None or catalog_item.type != "sale" or catalog_item.is_sold or existing_sale:
         raise HTTPException(status_code=409, detail="Товар уже недоступен для продажи")
 
     sale = Sale(
