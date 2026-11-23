@@ -10,12 +10,14 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import date
+import math
 
 from app.database import SessionLocal
 from app.models.catalog import Catalog
 from app.models.person import Person
 from app.models.sale import Sale
 from app.routers.auth import get_current_user, generate_csrf_token, verify_csrf_token
+from app.services.inventory_service import lock_catalog_item, release_catalog_after_sale_delete
 
 router = APIRouter(prefix="/admin/sales")
 
@@ -170,8 +172,8 @@ async def sale_create(
     if person is None:
         errors.append("Заказчик не найден")
 
-    if price_val <= 0:
-        errors.append("Цена должна быть больше 0")
+    if not math.isfinite(price_val) or price_val <= 0:
+        errors.append("Цена должна быть конечным числом больше 0")
 
     if errors:
         csrf_token = generate_csrf_token(request)
@@ -191,6 +193,11 @@ async def sale_create(
             status_code=400,
         )
 
+    # Сериализуем создание продажи с другими операциями над тем же товаром.
+    catalog_item = lock_catalog_item(db, catalog_item.id)
+    if catalog_item is None or catalog_item.type != "sale" or catalog_item.is_sold:
+        raise HTTPException(status_code=409, detail="Товар уже недоступен для продажи")
+
     sale = Sale(
         catalog_id=catalog_item.id,
         person_id=person.id,
@@ -201,7 +208,11 @@ async def sale_create(
 
     # Помечаем товар как проданный
     catalog_item.is_sold = True
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/sales", status_code=303)
 
@@ -283,8 +294,8 @@ async def sale_update(
         d_sale = None
         errors.append("Неверный формат даты продажи")
 
-    if price_val <= 0:
-        errors.append("Цена должна быть больше 0")
+    if not math.isfinite(price_val) or price_val <= 0:
+        errors.append("Цена должна быть конечным числом больше 0")
 
     if errors:
         csrf_token = generate_csrf_token(request)
@@ -306,7 +317,11 @@ async def sale_update(
     sale.person_id = per_id
     sale.price = price_val
     sale.sale_date = d_sale
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/sales", status_code=303)
 
@@ -329,12 +344,16 @@ async def sale_delete(
     if sale is None:
         raise HTTPException(status_code=404, detail="Продажа не найдена")
 
-    # Сбрасываем флаг is_sold у товара
-    catalog_item = db.query(Catalog).filter(Catalog.id == sale.catalog_id).first()
-    if catalog_item:
-        catalog_item.is_sold = False
-
+    # Блокируем товар и снимаем флаг только после проверки других продаж.
+    catalog_id = sale.catalog_id
+    catalog_item = lock_catalog_item(db, catalog_id)
     db.delete(sale)
-    db.commit()
+    if catalog_item is not None:
+        release_catalog_after_sale_delete(db, catalog_id, sale.id)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return RedirectResponse(url="/admin/sales", status_code=303)
