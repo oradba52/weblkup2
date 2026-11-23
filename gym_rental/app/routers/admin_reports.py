@@ -11,7 +11,7 @@
 
 from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case, and_
 from datetime import date, datetime
 import io
@@ -362,16 +362,16 @@ async def report_revenue(
 
     d_from, d_to = parse_date_range(date_from, date_to)
 
-    sale_query = db.query(Sale)
+    sale_query = db.query(Sale).options(joinedload(Sale.catalog), joinedload(Sale.person))
     if d_from:
         sale_query = sale_query.filter(Sale.sale_date >= d_from)
     if d_to:
         sale_query = sale_query.filter(Sale.sale_date <= d_to)
     sales = sale_query.order_by(Sale.sale_date.desc()).all()
 
-    booking_query = db.query(Booking).filter(Booking.status.in_(["active", "returned"]))
+    booking_query = db.query(Booking).options(joinedload(Booking.catalog), joinedload(Booking.person)).filter(Booking.status.in_(["active", "returned"]))
     if d_from:
-        booking_query = booking_query.filter(Booking.data_start >= d_from)
+        booking_query = booking_query.filter(Booking.data_finish >= d_from)
     if d_to:
         booking_query = booking_query.filter(Booking.data_start <= d_to)
     bookings = booking_query.order_by(Booking.data_start.desc()).all()
@@ -440,7 +440,7 @@ async def report_bookings(
 
     d_from, d_to = parse_date_range(date_from, date_to)
 
-    query = db.query(Booking)
+    query = db.query(Booking).options(joinedload(Booking.catalog), joinedload(Booking.person))
     if d_from:
         query = query.filter(Booking.data_finish >= d_from)
     if d_to:
@@ -501,7 +501,7 @@ async def report_overdue(
 
     today = date.today()
     # Брони, где data_finish < today и status == active (нет fact_finish)
-    overdue_bookings = db.query(Booking).filter(
+    overdue_bookings = db.query(Booking).options(joinedload(Booking.catalog), joinedload(Booking.person)).filter(
         Booking.status == "active",
         Booking.data_finish < today,
     ).order_by(Booking.data_finish.asc()).all()
@@ -577,7 +577,7 @@ async def report_top_customers(
         func.count(Booking.id).label("booking_count"),
     ).filter(Booking.status.in_(["active", "returned"])).group_by(Booking.person_id)
     if d_from:
-        booking_q = booking_q.filter(Booking.data_start >= d_from)
+        booking_q = booking_q.filter(Booking.data_finish >= d_from)
     if d_to:
         booking_q = booking_q.filter(Booking.data_start <= d_to)
 
@@ -585,9 +585,13 @@ async def report_top_customers(
 
     # Объединяем
     all_person_ids = set(sale_data.keys()) | set(booking_data.keys())
+    persons_by_id = {
+        person.id: person
+        for person in db.query(Person).filter(Person.id.in_(all_person_ids)).all()
+    } if all_person_ids else {}
     report_rows = []
     for pid in all_person_ids:
-        person = db.query(Person).filter(Person.id == pid).first()
+        person = persons_by_id.get(pid)
         if not person:
             continue
         s = sale_data.get(pid, {"sale_revenue": 0, "sale_count": 0})
@@ -645,7 +649,7 @@ async def report_sales_journal(
 
     d_from, d_to = parse_date_range(date_from, date_to)
 
-    query = db.query(Sale)
+    query = db.query(Sale).options(joinedload(Sale.catalog), joinedload(Sale.person))
     if d_from:
         query = query.filter(Sale.sale_date >= d_from)
     if d_to:
