@@ -99,13 +99,15 @@ def test_deleting_one_of_multiple_sales_keeps_item_sold():
         db.add_all([first, second])
         db.commit()
 
+        first_id = first.id
         db.delete(first)
-        release_catalog_after_sale_delete(db, item.id, first.id)
+        release_catalog_after_sale_delete(db, item.id, first_id)
         db.commit()
         assert db.get(Catalog, item.id).is_sold is True
 
+        second_id = second.id
         db.delete(second)
-        release_catalog_after_sale_delete(db, item.id, second.id)
+        release_catalog_after_sale_delete(db, item.id, second_id)
         db.commit()
         assert db.get(Catalog, item.id).is_sold is False
     finally:
