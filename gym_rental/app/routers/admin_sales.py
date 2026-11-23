@@ -8,7 +8,7 @@
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import date
 import math
 
@@ -51,7 +51,7 @@ async def sale_list(
 
     csrf_token = generate_csrf_token(request)
 
-    query = db.query(Sale)
+    query = db.query(Sale).options(joinedload(Sale.catalog), joinedload(Sale.person))
     total = query.count()
     sales = (
         query.order_by(Sale.id.desc())
